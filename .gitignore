@@ -1,2 +1,4 @@
 kaj_config.py
 lfm_auth.png
+.idea/*
+__pycache__/*
