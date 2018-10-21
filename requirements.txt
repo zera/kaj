@@ -1,0 +1,5 @@
+# Needed to run the bot
+slackclient==1.3.0
+
+# Packages needed for integrations
+pylast==2.4.0
