@@ -21,12 +21,6 @@ def handle_command(command, bot):
             text = command['content'].split(AT_BOT)[1].strip().lower()
             if text in bot.cmds_full:  # Check full command
                 response = bot.cmds_full[text](command)
-            else:  # Check starts-with command
-                response = "Det forstår jeg ikke :("
-                for t, f in bot.cmds_startswith.items():
-                    if text.startswith(t):
-                        response = f(command)
-                        break
         elif command['content'][0:2] == 's/':  # search/replace
             response = "Noget gik galt med din s/"
             parts = command['content'].split('/')
@@ -45,6 +39,9 @@ def handle_command(command, bot):
 
     if not done and command['type'] == 'hello':
         response = bot.cmd_hello(command)
+
+    if not done and command['type'] == 'message_changed':
+        response = bot.cmd_edited(command)
 
     if response:
         slack_client.api_call("chat.postMessage",
@@ -100,8 +97,20 @@ def parse_slack_output(slack_rtm_output):
                     command['name'] = '<ukendt navn>'
                     if val.get('ok'):
                         command['name'] = val.get('user').get('name')
+                # This event is sent to the bot when it goes online
                 if event['type'] == 'hello':
                     command['type'] = 'hello'
+                # This event is sent if a user edits his/her message
+                if event['type'] == 'message' and 'subtype' in event and event['subtype'] == 'message_changed':
+                    command['type'] = 'message_changed'
+                    command['user'] = event['message']['user']
+                    command['channel'] = event['channel']
+                    # Try to find the username as well.
+                    val = slack_client.api_call("users.info", user=command['user'])
+                    command['name'] = '<ukendt navn>'
+                    if val.get('ok'):
+                        command['name'] = val.get('user').get('name')
+                # Finally add the command to the list of KajBot-commands
                 cmds.append(command)
             except ConnectionError as e:
                 print("Connection error happened: {0}".format(e))

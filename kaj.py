@@ -74,7 +74,7 @@ class KajBot:
 
     # Whenever a message is posted. Do this
     def msg(self, cmd):
-        if cmd['content'][0:2] == 's/' or cmd['name'] == 'Kaj':
+        if cmd['content'][0:2] == 's/' or cmd['name'] == 'kaj':
             return
         self.messages.append((cmd['name'], cmd['content']))
         if len(self.messages) > self.msg_max:
@@ -82,3 +82,6 @@ class KajBot:
 
     def cmd_hello(self, cmd):
         return ":kaj: Hej med dig jeg hedder Kaj! :kaj:"
+
+    def cmd_edited(self, cmd):
+        return "Hov hov, {0}, sidder du og retter din besked :kmi:".format(cmd['name'])
