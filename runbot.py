@@ -61,6 +61,9 @@ def parse_slack_output(slack_rtm_output):
     # - name (Name of user who triggered the event)
     # - name2 (Name of target of event, i.e. person who was reacted to)
     rtm_list = slack_rtm_output
+    if not rtm_list:
+        return []
+    print("rtm_list:", rtm_list)
     cmds = []
     if rtm_list and len(rtm_list) > 0:
         for event in rtm_list:
@@ -101,7 +104,8 @@ def parse_slack_output(slack_rtm_output):
                 if event['type'] == 'hello':
                     command['type'] = 'hello'
                 # This event is sent if a user edits his/her message
-                if event['type'] == 'message' and 'subtype' in event and event['subtype'] == 'message_changed':
+                if event['type'] == 'message' and 'subtype' in event and event['subtype'] == 'message_changed'\
+                        and not 'attachments' in event['message']:  # We ignore messages with attachments.
                     command['type'] = 'message_changed'
                     command['user'] = event['message']['user']
                     command['channel'] = event['channel']

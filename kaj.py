@@ -4,6 +4,41 @@ import random
 
 # Packages for integrations
 import pylast
+from bs4 import BeautifulSoup
+import requests
+
+
+def hltv_get_astralis_matches():
+    # First retrieve the match page for Astralis (team id 6665)
+    page = BeautifulSoup(requests.get('https://www.hltv.org/matches?team=6665',
+                                      headers={'User-Agent': 'Mozilla/5.0'}).text, "lxml")
+    matches = page.find('div', {'class': 'upcoming-matches'})
+    all_matches = []
+    for matchday in matches.find_all('div', {'class': 'match-day'}):
+        links = matchday.find_all('a')
+        matchdaymatches = matchday.find_all('table', {'class': 'table'})
+        for link, matchdaymatch in zip(links, matchdaymatches):
+            match_obj = {}
+            match_obj['link'] = 'https://hltv.org' + link.attrs['href']
+            match_obj['date'] = matchday.find('span', {'class': 'standard-headline'}).text
+            match_obj['time'] = matchdaymatch.find('div', {'class': 'time'}).text
+            teams = matchdaymatch.find_all('div', {'class': 'team'})
+            match_obj['opp'] = teams[0].text if 'Astralis' in teams[1] else teams[1].text
+            match_obj['map'] = matchdaymatch.find('div', {'class': 'map-text'}).text
+
+            all_matches.append(match_obj)
+
+    return all_matches
+
+
+def make_astralis_msg(match_obj):
+    return "{0}, {1} - Mod {2} - Map/boX: {3} ({4})".format(
+        match_obj['date'],
+        match_obj['time'],
+        match_obj['opp'],
+        match_obj['map'],
+        match_obj['link']
+    )
 
 
 class KajBot:
@@ -30,6 +65,8 @@ class KajBot:
         self.cmds_full = {  # Commands that match entire line
             "hej": self.cmd_hej,
             "musikstatus": self.cmd_lfm,
+            "astralis_next": self.cmd_astralis_next,
+            "astralis_all": self.cmd_astralis_all
         }
         self.cmds_contain = {  # Commands that match part of line
             "plantagebaronen": self.cmd_pb,
@@ -85,3 +122,11 @@ class KajBot:
 
     def cmd_edited(self, cmd):
         return "Hov hov, {0}, sidder du og retter din besked :kmi:".format(cmd['name'])
+
+    def cmd_astralis_next(self, cmd):
+        ast_matches = hltv_get_astralis_matches()
+        return make_astralis_msg(ast_matches[0])
+
+    def cmd_astralis_all(self, cmd):
+        ast_matches = hltv_get_astralis_matches()
+        return '\n'.join(map(make_astralis_msg, ast_matches))
