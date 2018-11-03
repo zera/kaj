@@ -1,14 +1,37 @@
 import time
+from json import JSONDecodeError
 
 from slackclient import SlackClient
-from websocket import WebSocketConnectionClosedException
+from slackclient.server import SlackConnectionError
+from websocket._exceptions import WebSocketConnectionClosedException
 
 from kaj import KajBot
 from kaj_config import KAJ_DEFAULT_CHANNEL, KAJ_LASTFM_SECRET, KAJ_LASTFM_TOKEN, KAJ_SLACK_TOKEN, KAJ_ID
 
+import logging
+logger = logging.getLogger('kajlogger')
+logger.setLevel(logging.DEBUG)
 
-# Command handler
-def handle_command(command, bot):
+READ_WEBSOCKET_DELAY = 0.4  # Delay between reading in seconds
+CONNECTION_RETRY_DELAY = 1
+
+
+def slack_get_username(slack_client, user_id):
+    name = '<ukendt_navn>'
+    try:
+        logger.debug("Seding slack API call: {0}, {1}".format(
+            "users.info",
+            user_id)
+        )
+        val = slack_client.api_call("users.info", user=user_id)
+        if val.get('ok'):
+            name = val.get('user').get('name')
+    except JSONDecodeError as err:
+        logger.error('Got a JSON DecodeError while retrieving username: {0}'.format(err))
+    return name
+
+
+def handle_command(command, bot, slack_client):
     AT_BOT = "<@" + bot.id + ">"
     done = False
     response = None
@@ -44,13 +67,18 @@ def handle_command(command, bot):
         response = bot.cmd_edited(command)
 
     if response:
+        logger.debug("Seding slack API call: {0}, {1}, {2}".format(
+            "chat.postMessage",
+            command['channel'],
+            response)
+        )
         slack_client.api_call("chat.postMessage",
                               channel=command['channel'],
                               text=response,
                               as_user=True)
 
 
-def parse_slack_output(slack_rtm_output):
+def parse_slack_output(slack_rtm_output, slack_client):
     # Parses the slack RTM output and returns a tuple of the useful parts.
     # Returns a list of commands to consider.
     # Returned command contains the following fields (for now):
@@ -63,7 +91,7 @@ def parse_slack_output(slack_rtm_output):
     rtm_list = slack_rtm_output
     if not rtm_list:
         return []
-    print("rtm_list:", rtm_list)
+    logger.debug("rtm_list: {0}".format(rtm_list))
     cmds = []
     if rtm_list and len(rtm_list) > 0:
         for event in rtm_list:
@@ -82,66 +110,66 @@ def parse_slack_output(slack_rtm_output):
                     command['content'] = event['text']
                     command['channel'] = event['channel']
                     # Try to find the username as well.
-                    val = slack_client.api_call("users.info", user=command['user'])
-                    command['name'] = '<ukendt navn>'
-                    if val.get('ok'):
-                        command['name'] = val.get('user').get('name')
+                    command['name'] = slack_get_username(slack_client, command['user'])
                 # A reaction was added.
                 if event['type'] == 'reaction_added' and 'item' in event and\
                         'channel' in event['item']:
                     command['type'] = 'reaction'
                     command['content'] = event['reaction']
                     command['channel'] = event['item']['channel']
-                    val = slack_client.api_call("users.info", user=event['item_user'])
-                    command['name2'] = '<ukendt navn>'
-                    if val.get('ok'):
-                        command['name2'] = val.get('user').get('name')
-                    val = slack_client.api_call("users.info", user=event['user'])
-                    command['name'] = '<ukendt navn>'
-                    if val.get('ok'):
-                        command['name'] = val.get('user').get('name')
+                    command['name2'] = slack_get_username(slack_client, event['item_user'])
+                    command['name'] = slack_get_username(slack_client, event['user'])
                 # This event is sent to the bot when it goes online
                 if event['type'] == 'hello':
                     command['type'] = 'hello'
                 # This event is sent if a user edits his/her message
                 if event['type'] == 'message' and 'subtype' in event and event['subtype'] == 'message_changed'\
-                        and not 'attachments' in event['message']:  # We ignore messages with attachments.
+                        and 'attachments' not in event['message']:  # We ignore messages with attachments.
                     command['type'] = 'message_changed'
                     command['user'] = event['message']['user']
                     command['channel'] = event['channel']
                     # Try to find the username as well.
-                    val = slack_client.api_call("users.info", user=command['user'])
-                    command['name'] = '<ukendt navn>'
-                    if val.get('ok'):
-                        command['name'] = val.get('user').get('name')
+                    command['name'] = slack_get_username(slack_client, command['user'])
                 # Finally add the command to the list of KajBot-commands
                 cmds.append(command)
             except ConnectionError as e:
-                print("Connection error happened: {0}".format(e))
+                logger.critical("Connection error happened: {0}".format(e))
     return cmds
 
 
 # Main stuff.
 # Creates a loop parsing messages, passing the messages to handle_command
 if __name__ == "__main__":
-    print("Initializing Kaj Bot")
-    slack_client = SlackClient(KAJ_SLACK_TOKEN)
+    logger.info("Initializing Kaj Bot")
+    kaj_client = SlackClient(KAJ_SLACK_TOKEN)
     kaj = KajBot(KAJ_ID, KAJ_SLACK_TOKEN, KAJ_DEFAULT_CHANNEL, KAJ_LASTFM_TOKEN, KAJ_LASTFM_SECRET)
 
-    READ_WEBSOCKET_DELAY = 0.4  # Delay between reading in seconds
-    print("Initialized bot. Running main loop with delay {0}".format(READ_WEBSOCKET_DELAY))
-    if slack_client.rtm_connect():
-        print("Kaj! connected and running!")
-        while True:
+    logger.info("Initialized bot. Running main loop with delay {0}".format(READ_WEBSOCKET_DELAY))
+    while True:
+        if kaj_client.server.connected:
             try:
-                cmds = parse_slack_output(slack_client.rtm_read())
-                if cmds:
-                    print("Commands:", cmds)
-                for cmd in cmds:
-                    handle_command(cmd, kaj)
+                kaj_cmds = parse_slack_output(kaj_client.rtm_read(), kaj_client)
+                if kaj_cmds:
+                    logger.info("Commands: {0}".format(kaj_cmds))
+                for cmd in kaj_cmds:
+                    handle_command(cmd, kaj, kaj_client)
                 time.sleep(READ_WEBSOCKET_DELAY)
             except WebSocketConnectionClosedException as e:
-                print("Connection error happened: {0}".format(e))
-                slack_client.rtm_connect()
-    else:
-        print("Connection failed. Invalid Slack token or bot ID?")
+                logger.critical("Connection error happened: {0}".format(e))
+            except SlackConnectionError as e:
+                logger.critical("Connection error happened: {0}".format(e))
+        else:
+            delay = CONNECTION_RETRY_DELAY
+            for i in range(5):
+                time.sleep(delay)
+                logger.info('Connecting, try {0}/{1}'.format(i, 5))
+                if kaj_client.rtm_connect():
+                    logger.info('Connection succeeded')
+                    break
+                else:
+                    logger.error('Connection retry {0}/{1} failed!'.format(i, 5))
+                delay *= 2
+            else:
+                logger.critical('Failed after 5 reconnect attempts. Perhaps invalid slack token?')
+                break
+    logger.critical('Shutting down main loop')

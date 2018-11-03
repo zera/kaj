@@ -1,7 +1,9 @@
 # Needed to run the bot
-slackclient==1.3.0
+slackclient
+websocket
+websocket-client
 
 # Packages needed for integrations
-pylast==2.4.0
+pylast
 beautifulsoup4
 lxml
