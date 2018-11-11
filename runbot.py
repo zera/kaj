@@ -14,6 +14,7 @@ logger.setLevel(logging.DEBUG)
 
 READ_WEBSOCKET_DELAY = 0.4  # Delay between reading in seconds
 CONNECTION_RETRY_DELAY = 1
+CONNECTION_RETRY_LIMIT = 10
 
 
 def slack_get_username(slack_client, user_id):
@@ -158,18 +159,20 @@ if __name__ == "__main__":
                 logger.critical("Connection error happened: {0}".format(e))
             except SlackConnectionError as e:
                 logger.critical("Connection error happened: {0}".format(e))
+            except TimeoutError as e:
+                logger.critical("Timeout error happened: {0}".format(e))
         else:
             delay = CONNECTION_RETRY_DELAY
-            for i in range(5):
+            for i in range(CONNECTION_RETRY_LIMIT):
                 time.sleep(delay)
-                logger.info('Connecting, try {0}/{1}'.format(i, 5))
+                logger.info('Connecting, try {0}/{1}'.format(i, CONNECTION_RETRY_LIMIT))
                 if kaj_client.rtm_connect():
                     logger.info('Connection succeeded')
                     break
                 else:
-                    logger.error('Connection retry {0}/{1} failed!'.format(i, 5))
+                    logger.error('Connection retry {0}/{1} failed!'.format(i, CONNECTION_RETRY_LIMIT))
                 delay *= 2
             else:
-                logger.critical('Failed after 5 reconnect attempts. Perhaps invalid slack token?')
+                logger.critical('Failed after limit reconnect attempts. Perhaps invalid slack token?')
                 break
     logger.critical('Shutting down main loop')

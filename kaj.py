@@ -13,6 +13,8 @@ def hltv_get_astralis_matches():
     page = BeautifulSoup(requests.get('https://www.hltv.org/matches?team=6665',
                                       headers={'User-Agent': 'Mozilla/5.0'}).text, "lxml")
     matches = page.find('div', {'class': 'upcoming-matches'})
+    if not matches:
+        return None
     all_matches = []
     for matchday in matches.find_all('div', {'class': 'match-day'}):
         links = matchday.find_all('a')
@@ -125,8 +127,12 @@ class KajBot:
 
     def cmd_astralis_next(self, cmd):
         ast_matches = hltv_get_astralis_matches()
+        if not ast_matches:
+            return 'Jeg kunne ikke finde nogen Astralis kampe'
         return make_astralis_msg(ast_matches[0])
 
     def cmd_astralis_all(self, cmd):
         ast_matches = hltv_get_astralis_matches()
+        if not ast_matches:
+            return 'Jeg kunne ikke finde nogen Astralis kampe'
         return '\n'.join(map(make_astralis_msg, ast_matches))
