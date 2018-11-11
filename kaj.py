@@ -7,11 +7,12 @@ import pylast
 from bs4 import BeautifulSoup
 import requests
 
+mozilla_agent = 'Mozilla/5.0 (Platform; Security; OS-or-CPU; Localization; rv:1.4) Gecko/20030624 Netscape/7.1 (ax)'
 
 def hltv_get_astralis_matches():
     # First retrieve the match page for Astralis (team id 6665)
     page = BeautifulSoup(requests.get('https://www.hltv.org/matches?team=6665',
-                                      headers={'User-Agent': 'Mozilla/5.0'}).text, "lxml")
+                                      headers={'User-Agent': mozilla_agent}).text, "lxml")
     matches = page.find('div', {'class': 'upcoming-matches'})
     if not matches:
         return None
